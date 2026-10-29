@@ -1,4 +1,5 @@
 import { AREA_TRIGGERS, areaTriggers, areaMode } from './area-triggers.js';
+import { spellNameMatches, spellNames } from './spell-names.js';
 export const MODULE_ID = 'spell-arsenal';
 export function isInstant(rule) { return rule.instant ?? (rule.duration === 5); }
 export const DURATION_UNITS = { seconds: 1, rounds: 6, minutes: 60, hours: 3600 };
@@ -7,14 +8,14 @@ export function displayDuration(rule) {
   return { unit, value: rule.duration / (DURATION_UNITS[unit] ?? 1) };
 }
 export function hasTemplate(rule) {
-  return rule.hasTemplate ?? ['fireball', 'scatter scree', 'grim tendrils', 'breathe fire'].includes(rule.spell?.trim().toLowerCase());
+  return rule.hasTemplate ?? spellNameMatches(rule.spell, 'Fireball', 'Scatter Scree', 'Grim Tendrils', 'Breathe Fire');
 }
 export { DEFAULT_RULES } from './default-rules.js';
 
 export function missingDefaults(existing, defaults) {
-  const names = new Set(existing.map(rule => rule.spell.trim().toLowerCase()));
+  const names = new Set(existing.flatMap(rule => spellNames(rule.spell)));
   const ids = new Set(existing.map(rule => rule.id));
-  return defaults.filter(rule => !names.has(rule.spell.toLowerCase())).map(rule => {
+  return defaults.filter(rule => !spellNames(rule.spell).some(name => names.has(name))).map(rule => {
     let id = rule.id, suffix = 1;
     while (ids.has(id)) id = `${rule.id.slice(0, 55)}-${suffix++}`;
     ids.add(id);

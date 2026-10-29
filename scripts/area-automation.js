@@ -1,6 +1,7 @@
 import { systemAdapter } from './systems.js';
 import { tokenInsideArea, crossesArea } from './area-movement.js';
 import { isInstant } from './rules.js';
+import { spellNameMatches } from './spell-names.js';
 import { AREA_TRIGGERS, areaTriggers, areaRepeatKey } from './area-triggers.js';
 import { registerToolbeltTargeting, waitForToolbeltTargets, targetingRegion } from './toolbelt-targeting.js';
 const seen = new Set();
@@ -82,7 +83,7 @@ export function areaAutomation(region) {
   if (!game.settings.get('spell-arsenal', 'enabled') || region.flags?.world?.spellArsenalArea) return null;
   const adapter = systemAdapter(), spell = adapter.regionCastSpell(region);
   if (!spell || adapter.placementPending(region) || adapter.handlesAreaAutomation(spell)) return null;
-  const rule = game.settings.get('spell-arsenal', 'rules').find(r => r.enabled && r.kind === 'area' && areaTriggers(r, spell).length && r.spell.trim().toLowerCase() === spell.name.trim().toLowerCase());
+  const rule = game.settings.get('spell-arsenal', 'rules').find(r => r.enabled && r.kind === 'area' && areaTriggers(r, spell).length && spellNameMatches(r.spell, spell));
   if (rule && !isInstant(rule) && rule.duration > 0 && region._stats?.createdTime && Date.now() >= region._stats.createdTime + rule.duration * 1000) return null;
   return rule ? { rule, spell } : null;
 }
@@ -153,7 +154,7 @@ export async function cleanupInstantDamage(message) {
   if (!game.user.isGM || game.users.activeGM?.id !== game.user.id || !game.settings.get('spell-arsenal', 'enabled')) return;
   const adapter = systemAdapter(), spell = adapter.areaDamageSpell(message);
   if (spell?.type !== 'spell' || !spell.uuid || !message.rolls?.length) return;
-  const rule = game.settings.get('spell-arsenal', 'rules').find(rule => rule.enabled && rule.kind === 'area' && isInstant(rule) && rule.spell.trim().toLowerCase() === spell.name.trim().toLowerCase());
+  const rule = game.settings.get('spell-arsenal', 'rules').find(rule => rule.enabled && rule.kind === 'area' && isInstant(rule) && spellNameMatches(rule.spell, spell));
   if (!rule) return;
   const scene = game.scenes?.get(message.speaker?.scene) ?? globalThis.canvas?.scene;
   if (!scene) return;

@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.0.2 - 2026-10-29
+
+- Match spell mappings against translated spell names: bilingual Babele names (`Localized / English`), Babele original names, and system slugs. A `Corrosive Muck` mapping now triggers for `Разъедающая грязь / Corrosive Muck`.
+- Keep translated mappings from re-adding English defaults for the same spell.
+
 ## 1.0.1 - 2026-10-08
 
 - Add optional Animater recipe playback per mapping, with bulk Enable all / Disable all controls.

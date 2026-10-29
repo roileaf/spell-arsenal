@@ -6,6 +6,7 @@ import { dispatchTileVisual } from './trigger-integration.js';
 import { playAnimater, recordAnimation } from './animater-integration.js';
 import { waitForToolbeltTargets } from './toolbelt-targeting.js';
 import { areaEnemyTokens } from './area-automation.js';
+import { spellNameMatches } from './spell-names.js';
 
 const documentTypes = ['Tile', 'AmbientLight', 'AmbientSound', 'Region'];
 const ownershipFlags = { area: 'spellArsenalArea', damage: 'spellArsenalDamage', caster: 'spellArsenalCaster' };
@@ -80,7 +81,7 @@ class SpellVisualRunner {
 
   matches(region) {
     if (region.flags?.world?.[this.flag]) return false;
-    return normalized(this.adapter.regionName(region)) === normalized(this.settings.SPELL_NAME);
+    return spellNameMatches(this.settings.SPELL_NAME, this.adapter.regionName(region), this.adapter.regionSpell(region));
   }
 
   visible(region) {
@@ -94,7 +95,7 @@ class SpellVisualRunner {
   async start() {
     this.listen('createChatMessage', message => this.handleMessage(message));
     if (this.kind === 'damage') this.adapter.listenDamage(this.listen.bind(this), (message, token) => {
-      if (normalized(message.item?.name) !== normalized(this.settings.SPELL_NAME)) return;
+      if (!spellNameMatches(this.settings.SPELL_NAME, message.item)) return;
       const position = { center: token.getCenterPoint(), elevation: token.elevation, levelId: token.level };
       this.submit(() => this.renderToken(message, token, position));
     });
@@ -154,7 +155,7 @@ class SpellVisualRunner {
     message = this.adapter.messageEvent(message, this.kind);
     if (!message) return;
     const spell = message.item;
-    if (!(spell?.type === 'spell' || spell?.isOfType?.('spell')) || normalized(spell.name) !== normalized(this.settings.SPELL_NAME)) return;
+    if (!(spell?.type === 'spell' || spell?.isOfType?.('spell')) || !spellNameMatches(this.settings.SPELL_NAME, spell)) return;
     if (this.received.has(message.id)) return;
     this.received.add(message.id);
     if (this.received.size > 500) this.received.delete(this.received.values().next().value);

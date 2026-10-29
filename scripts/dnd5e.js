@@ -1,4 +1,5 @@
-export const isDndSpell = item => item?.type === 'spell' && typeof item.system?.level === 'number';
+import { spellNameMatches } from './spell-names.js';
+export const isDndSpell =item => item?.type === 'spell' && typeof item.system?.level === 'number';
 export const activities = item => item?.system?.activities?.values ? [...item.system.activities.values()] : Object.values(item?.system?.activities ?? {});
 export function areaActivities(item, event) {
   const all = activities(item);
@@ -46,8 +47,8 @@ export function annotateDndDamage(actor, amount, updates, options) {
   const nextValue = updates['system.attributes.hp.value'] ?? updates.system?.attributes?.hp?.value ?? hp.value;
   const nextTemp = updates['system.attributes.hp.temp'] ?? updates.system?.attributes?.hp?.temp ?? hp.temp ?? 0;
   if (Number(hp.value) + Number(hp.temp ?? 0) <= Number(nextValue) + Number(nextTemp)) return;
-  if (!game.settings.get('spell-arsenal', 'rules').some(r => r.enabled && r.kind === 'damage' && r.spell.trim().toLowerCase() === spell.name.trim().toLowerCase())) return;
-  updates['flags.world.spellArsenalDamageEvent'] = { id: foundry.utils.randomID(), itemUuid: spell.uuid, name: spell.name, spellLevel: spell.system.level, actorId: actor.id };
+  if (!game.settings.get('spell-arsenal', 'rules').some(r => r.enabled && r.kind === 'damage' && spellNameMatches(r.spell, spell))) return;
+  updates['flags.world.spellArsenalDamageEvent'] = { id: foundry.utils.randomID(), itemUuid: spell.uuid, name: spell.name, originalName: spell.flags?.babele?.originalName ?? '', slug: spell.system.slug ?? '',spellLevel: spell.system.level, actorId: actor.id };
 }
 export function forwardDndDamage(actor, changes, options) {
   const event = changes['flags.world.spellArsenalDamageEvent'] ?? changes.flags?.world?.spellArsenalDamageEvent;
@@ -150,7 +151,7 @@ export const dnd5eAdapter = {
       if (!event || event.actorId !== actor.id) return;
       const tokens = actor.isToken ? [actor.token] : (canvas.tokens?.placeables ?? []).filter(t => t.actor?.id === actor.id).map(t => t.document);
       for (const token of tokens.filter(t => t?.parent === canvas.scene && t.level === canvas.level?.id)) {
-        const item = { type: 'spell', name: event.name, system: { level: event.spellLevel }, isCantrip: event.spellLevel === 0 };
+        const item = { type: 'spell', name: event.name, flags: { babele: { originalName: event.originalName } }, system: { level: event.spellLevel, slug: event.slug }, isCantrip: event.spellLevel === 0 };
         emit({ id: `${event.id}:${token.id}`, item, flags: { dnd5e: { origin: { castRank: event.spellLevel } } } }, token);
       }
     });
