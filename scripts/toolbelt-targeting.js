@@ -18,7 +18,8 @@ function remember(region, creatorId) {
   state.finish = (targets, handled = true) => {
     if (state.settled) return;
     state.settled = true;
-    resolve({ handled, targets });
+    // A cancel is followed by Toolbelt's unawaited template removal.
+    resolve(handled && targets === null ? { handled, targets, canceled: true } : { handled, targets });
   };
   pending.set(region.uuid, state);
   // Retain the source in this bounded cache: Toolbelt can delete it before

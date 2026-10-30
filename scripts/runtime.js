@@ -11,7 +11,8 @@ import { spellNameMatches } from './spell-names.js';
 const documentTypes = ['Tile', 'AmbientLight', 'AmbientSound', 'Region'];
 const ownershipFlags = { area: 'spellArsenalArea', damage: 'spellArsenalDamage', caster: 'spellArsenalCaster' };
 const authorized = () => game.user.isGM && game.users.activeGM?.id === game.user.id;
-const normalized = value => String(value ?? '').trim().toLowerCase();
+const CANCEL_SETTLE_MS = 500;
+const normalized = value =>String(value ?? '').trim().toLowerCase();
 let pendingWork = Promise.resolve();
 
 export async function runSpellEffect(kind, settings, owner) {
@@ -284,15 +285,19 @@ class SpellVisualRunner {
     const task = (async () => {
       recordAnimation(this.settings.SPELL_NAME, 'Targeting', 'Waiting for Toolbelt targets', region.uuid);
       const targeting = await waitForToolbeltTargets(region);
-      const canceled = !this.enabled ? 'Mapping stopped during targeting' : !authorized() ? 'Active GM changed during targeting' :
+      // Let a canceled template's removal arrive: tiles skip a removed area, so Animater must too.
+      if (targeting.canceled && region.parent.regions.has(region.id)) await new Promise(resolve => setTimeout(resolve, CANCEL_SETTLE_MS));
+      const canceled =!this.enabled ? 'Mapping stopped during targeting' : !authorized() ? 'Active GM changed during targeting' :
         !this.visible(region) ? 'Canvas level changed during targeting' :
-        targeting.handled && !targeting.targets?.length ? 'Toolbelt canceled or selected no targets' :
-        !targeting.handled && !region.parent.regions.has(region.id) ? 'Area removed without target confirmation' : null;
+        !targeting.targets && !region.parent.regions.has(region.id) ? 'Area removed without target confirmation' : null;
       if (canceled) { recordAnimation(this.settings.SPELL_NAME, 'Skipped', canceled, region.uuid); return; }
-      const tokens = targeting.handled ? [...region.parent.tokens].filter(token => targeting.targets.includes(token.uuid)) : areaEnemyTokens(region, spell);
+      // Tiles follow whenever the area remains, so Animater plays first even with
+      // an empty or canceled Toolbelt selection, just without targets.
+      const tokens = targeting.targets ? [...region.parent.tokens].filter(token => targeting.targets.includes(token.uuid))
+        : targeting.handled ? [] : areaEnemyTokens(region, spell);
       // Template recipes can contain projectiles and target motion as well as
       // area effects. Supply the completed selection instead of an empty array.
-      if (targeting.handled) this.confirmedAnimationRegions.add(region);
+      if (targeting.targets) this.confirmedAnimationRegions.add(region);
       await this.animate(region.uuid, event, { targets: tokens.map(token => token.object).filter(Boolean) });
     })();
     this.animationTasks.set(region, task);

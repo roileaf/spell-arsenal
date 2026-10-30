@@ -95,6 +95,24 @@ test('Spell Arsenal tiles wait for Animater completion', async () => {
   } finally { playback.resolve(); api.play = original; await runner.stop(false); }
 });
 
+test('Spell Arsenal tiles wait for Animater effects that outlast play()', async () => {
+  const { runner, region } = await fixture('outlasting');
+  const original = api.play;
+  const effects = [{ data: { name: 'animater-gm-1' } }, { data: { name: 'animater-gm-1', persist: true } }, { data: { name: 'other' } }];
+  globalThis.Sequencer = { EffectManager: { getEffects: ({ name }) => effects.filter(effect => effect.data.name === name) } };
+  let tiles = 0;
+  api.play = async () => 'animater-gm-1';
+  runner.createVisuals = async () => { tiles++; return true; };
+  try {
+    const rendering = runner.renderRegion(region);
+    await new Promise(resolve => setTimeout(resolve, 250));
+    assert.equal(tiles, 0, 'Tile Arsenal started while the Animater effect was still playing');
+    effects.splice(0, 1);
+    await rendering;
+    assert.equal(tiles, 1, 'persistent Animater layers must not hold the tiles back');
+  } finally { delete globalThis.Sequencer; api.play = original; await runner.stop(false); }
+});
+
 test('absent enabled Animater recipe reports why it cannot play', async () => {
   api.resolve = () => null;
   try {
@@ -175,6 +193,53 @@ test('area animation starts while earlier tile work still holds queue', async ()
     await flush();
     assert.equal(played.length, 1, 'Animater waited behind tile writes');
   } finally { earlier.resolve(); await runner.stop(false); }
+});
+
+test('Toolbelt empty selection or kept canceled area plays Animater before tiles; removed cancel plays neither', async () => {
+  const { registerToolbeltTargeting } = await import('../scripts/toolbelt-targeting.js');
+  globalThis.CONFIG = { queries: {} };
+  registerToolbeltTargeting();
+  game.modules.set('pf2e-toolbelt', { active: true });
+  game.toolbelt = { getToolSetting: () => true };
+  game.keyboard = { isModifierActive: () => false };
+  try {
+    for (const outcome of ['empty', 'cancel', 'cancel-removed']) {
+      const { runner, region } = await fixture(`toolbelt-${outcome}`);
+      const order = [];
+      api.play = async (selected, context) => { order.push('animater'); played.push({ recipe: selected, context }); };
+      runner.createVisuals = async () => { order.push('tiles'); return true; };
+      region.isEffectArea = true;
+      region.flags.pf2e.messageId = region.message.id = `message-${outcome}`;
+      try {
+        const options = {};
+        Hooks.callAll('preCreateRegion', region, {}, options, game.user.id);
+        Hooks.callAll('createRegion', region, options, game.user.id);
+        const helper = { options: Object.freeze({ classes: ['pf2e-toolbelt-template-helper'], window: { title: spell.name },
+          buttons: { yes: { callback: async () => ({ targets: 'enemies' }) }, no: { callback: async () => ({ dismiss: false }) } } }) };
+        Hooks.callAll('renderDialogV2', helper);
+        await flush();
+        assert.deepEqual(order, [], 'Animater played before targeting completed');
+        if (outcome === 'empty') {
+          await helper.options.buttons.yes.callback();
+          Hooks.callAll('preUpdateChatMessage', region.message, { flags: { 'pf2e-toolbelt': { targetHelper: { targets: [] } } } });
+          // Toolbelt removes a confirmed template; its snapshot still gets visuals.
+          scene.regions.delete(region.id); Hooks.callAll('deleteRegion', region);
+        } else {
+          await helper.options.buttons.no.callback();
+          // Toolbelt removes a canceled template without awaiting the deletion.
+          if (outcome === 'cancel-removed') setTimeout(() => { scene.regions.delete(region.id); Hooks.callAll('deleteRegion', region); }, 20);
+        }
+        Hooks.callAll('closeDialogV2', helper);
+        await runner.animationTasks.get(region); await flush(); await runner.queue; await flush();
+        if (outcome === 'cancel-removed') { assert.deepEqual(order, [], 'canceled and removed area must play nothing'); continue; }
+        assert.deepEqual(order, ['animater', 'tiles'], `${outcome}: Animater must play before tiles`);
+        assert.deepEqual(played.at(-1).context.targets, []);
+      } finally { await runner.stop(false); }
+    }
+  } finally {
+    api.play = async (selected, context) => { played.push({ recipe: selected, context }); };
+    game.modules.delete('pf2e-toolbelt'); delete game.toolbelt;
+  }
 });
 
 const animaterMain = new URL('../../animater/scripts/main.mjs', import.meta.url);

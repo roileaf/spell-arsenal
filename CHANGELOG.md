@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.0.3 - 2026-10-30
+
+- Wait for Animater's effects to finish before placing Tile Arsenal visuals. Animater reports playback as started, not finished, so tiles used to appear mid-animation.
+- Play Animater before tiles when Toolbelt confirms an area with no targets, instead of showing tiles alone.
+- Skip both Animater and tiles when Toolbelt targeting is canceled and the template is removed; play both when the template stays.
+
 ## 1.0.2 - 2026-10-29
 
 - Match spell mappings against translated spell names: bilingual Babele names (`Localized / English`), Babele original names, and system slugs. A `Corrosive Muck` mapping now triggers for `Разъедающая грязь / Corrosive Muck`.
