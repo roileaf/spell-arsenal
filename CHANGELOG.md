@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.0.4 - 2026-11-02
+
+- Fix Animater recipes for damage mappings (such as Chain Lightning) playing from the damaged token instead of the caster, which left chained and projectile recipes with nothing to show.
+- Play a damage mapping's Animater recipe once per cast at every target damaged together, then each target's Tile Arsenal visual.
+
 ## 1.0.3 - 2026-10-30
 
 - Wait for Animater's effects to finish before placing Tile Arsenal visuals. Animater reports playback as started, not finished, so tiles used to appear mid-animation.

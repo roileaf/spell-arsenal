@@ -12,6 +12,7 @@ const documentTypes = ['Tile', 'AmbientLight', 'AmbientSound', 'Region'];
 const ownershipFlags = { area: 'spellArsenalArea', damage: 'spellArsenalDamage', caster: 'spellArsenalCaster' };
 const authorized = () => game.user.isGM && game.users.activeGM?.id === game.user.id;
 const CANCEL_SETTLE_MS = 500;
+const DAMAGE_BATCH_MS = 250;
 const normalized = value =>String(value ?? '').trim().toLowerCase();
 let pendingWork = Promise.resolve();
 
@@ -42,6 +43,7 @@ class SpellVisualRunner {
     this.timers = new Map();
     this.received = new Set();
     this.animated = new Map();
+    this.damageBatches = new Map();
     this.animationTasks = new WeakMap();
     this.confirmedAnimationRegions = new WeakSet();
     this.finished = new Set();
@@ -98,6 +100,7 @@ class SpellVisualRunner {
     if (this.kind === 'damage') this.adapter.listenDamage(this.listen.bind(this), (message, token) => {
       if (!spellNameMatches(this.settings.SPELL_NAME, message.item)) return;
       const position = { center: token.getCenterPoint(), elevation: token.elevation, levelId: token.level };
+      this.animateDamage(message, token);
       this.submit(() => this.renderToken(message, token, position));
     });
     if (this.kind === 'damage') this.listen('updateChatMessage', message => {
@@ -169,6 +172,7 @@ class SpellVisualRunner {
     const token = message.token ?? (this.kind === 'caster' && candidates.length === 1 ? candidates[0].document : null);
     if (!token) return;
     const snapshot = { center: token.getCenterPoint(), elevation: token.elevation, levelId: token.level };
+    if (this.kind === 'damage') this.animateDamage(message, token);
     this.submit(() => this.renderToken(message, token, snapshot));
   }
 
@@ -237,8 +241,8 @@ class SpellVisualRunner {
     if (canvas.grid.isGridless) throw new Error('Spell visuals require a grid.');
     const offset = canvas.grid.getOffset(position.center);
     const center = canvas.grid.getCenterPoint(offset);
-    if (this.settings.ANIMATER) await this.animate(message.id, { type: this.kind === 'damage' ? 'damage' : 'use', item: message.item, actor: message.actor,
-      tokenId: this.kind === 'caster' ? token.id : message.speaker?.token, sceneId: token.parent.id }, { targets: this.kind === 'damage' && token.object ? [token.object] : [] });
+    if (this.settings.ANIMATER) await (this.kind === 'damage' ? this.animateDamage(message, token)
+      : this.animate(message.id, { type: 'use', item: message.item, actor: message.actor, tokenId: token.id, sceneId: token.parent.id }, { targets: [] }));
     if (!this.enabled || !authorized() || this.adapter.reverted(message) || !canvas.ready || canvas.scene !== token.parent || canvas.level?.id !== position.levelId) return;
     await this.createVisuals(token.parent, message.id, [offset], (data, type) => {
       data.x = Math.round(data.x + position.center.x - center.x);
@@ -255,6 +259,30 @@ class SpellVisualRunner {
     this.animated.set(source, task);
     if (this.animated.size > 500) this.animated.delete(this.animated.keys().next().value);
     return task;
+  }
+
+  // Damage lands as one message per target, spoken by that target. Play the recipe once,
+  // from the caster, at every target the spell damaged together, before their tiles.
+  animateDamage(message, token) {
+    if (!this.settings.ANIMATER) return;
+    if (this.animated.has(message.id)) return this.animated.get(message.id);
+    const item = message.item;
+    const key = item?.uuid ?? item?.name;
+    let batch = this.damageBatches.get(key);
+    if (!batch) {
+      const caster = item?.actor ?? (item?.uuid ? globalThis.fromUuidSync?.(item.uuid)?.actor : null);
+      const casterToken = caster?.getActiveTokens?.(true, true)?.find(document => document.parent === token.parent);
+      batch = { targets: [] };
+      this.damageBatches.set(key, batch);
+      batch.task = new Promise(resolve => setTimeout(resolve, DAMAGE_BATCH_MS)).then(() => {
+        this.damageBatches.delete(key);
+        return playAnimater({ type: 'damage', item, actor: caster ?? message.actor, tokenId: casterToken?.id, sceneId: token.parent.id }, { targets: batch.targets });
+      }).catch(error => this.report(error));
+    }
+    if (token.object && !batch.targets.includes(token.object)) batch.targets.push(token.object);
+    this.animated.set(message.id, batch.task);
+    if (this.animated.size > 500) this.animated.delete(this.animated.keys().next().value);
+    return batch.task;
   }
 
   queueRegion(region) {

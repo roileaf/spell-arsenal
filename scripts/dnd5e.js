@@ -151,7 +151,7 @@ export const dnd5eAdapter = {
       if (!event || event.actorId !== actor.id) return;
       const tokens = actor.isToken ? [actor.token] : (canvas.tokens?.placeables ?? []).filter(t => t.actor?.id === actor.id).map(t => t.document);
       for (const token of tokens.filter(t => t?.parent === canvas.scene && t.level === canvas.level?.id)) {
-        const item = { type: 'spell', name: event.name, flags: { babele: { originalName: event.originalName } }, system: { level: event.spellLevel, slug: event.slug }, isCantrip: event.spellLevel === 0 };
+        const item = { type: 'spell', name: event.name, uuid: event.itemUuid,flags: { babele: { originalName: event.originalName } }, system: { level: event.spellLevel, slug: event.slug }, isCantrip: event.spellLevel === 0 };
         emit({ id: `${event.id}:${token.id}`, item, flags: { dnd5e: { origin: { castRank: event.spellLevel } } } }, token);
       }
     });
