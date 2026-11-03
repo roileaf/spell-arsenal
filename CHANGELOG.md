@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.0.5 - 2026-11-03
+
+- Fix damage mappings with Animater playback (such as Chain Lightning) showing no animation when damage is rolled. Animater yields the damage roll to Spell Arsenal, which only played on applied damage. Spell Arsenal now plays the recipe on the roll, from the caster at the roller's targets (Toolbelt's when present), and the applied damage's tiles wait for it without replaying.
+
 ## 1.0.4 - 2026-11-02
 
 - Fix Animater recipes for damage mappings (such as Chain Lightning) playing from the damaged token instead of the caster, which left chained and projectile recipes with nothing to show.

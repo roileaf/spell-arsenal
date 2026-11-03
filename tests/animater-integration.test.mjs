@@ -272,6 +272,39 @@ test('damage mapping plays Animater once from the caster at every damaged target
   } finally { api.play = original; canvas.grid = grid; await runner.stop(false); }
 });
 
+test('damage mapping plays Animater on the damage roll at the roller\'s targets, and applied damage reuses it', async () => {
+  played = []; errors = [];
+  const casterToken = { id: 'caster-token', parent: scene };
+  const caster = { id: 'caster', getActiveTokens: () => [casterToken] };
+  const chain = { type: 'spell', name: 'Chain Lightning', uuid: 'Actor.caster.Item.chain', actor: caster, system: {} };
+  const grid = canvas.grid;
+  canvas.grid = { isGridless: false, getOffset: () => ({ i: 0, j: 0 }), getCenterPoint: () => ({ x: 0, y: 0 }) };
+  const runner = await runSpellEffect('damage', { SPELL_NAME: chain.name, EFFECT_NAME: 'Acid', ANIMATER: true, INSTANT: true, DURATION_SECONDS: 5, STAGE_MODE: 'auto' }, 'spell-arsenal:chain-roll');
+  const order = [];
+  const original = api.play;
+  api.play = async (selected, context) => { order.push('animater'); played.push({ recipe: selected, context }); };
+  runner.createVisuals = async (_scene, source) => { order.push(`tiles:${source}`); return true; };
+  const targeted = ['first', 'second'].map(id => ({ id, document: { parent: scene } }));
+  const hit = id => {
+    const document = { id, parent: scene, elevation: 0, level: 'level', getCenterPoint: () => ({ x: 0, y: 0 }) };
+    document.object = { id, name: id, document };
+    return { id: `damage-${id}`, item: chain, actor: { id }, speaker: { token: id }, token: document,
+      flags: { pf2e: { context: { type: 'damage-taken' }, appliedDamage: { updates: [{ path: 'system.attributes.hp.value', value: 5 }] } } } };
+  };
+  try {
+    Hooks.callAll('createChatMessage', { id: 'roll', item: chain, token: casterToken, author: { targets: new Set(targeted) }, flags: { pf2e: { context: { type: 'damage-roll' } } } });
+    await flush();
+    assert.equal(played.length, 1, 'rolling damage plays Animater, as it does without a mapping');
+    assert.equal(played[0].context.tokenId, 'caster-token');
+    assert.deepEqual(played[0].context.targets.map(target => target.id), ['first', 'second']);
+    Hooks.callAll('createChatMessage', hit('first'));
+    Hooks.callAll('createChatMessage', hit('second'));
+    await new Promise(resolve => setTimeout(resolve, 400)); await runner.queue; await flush();
+    assert.equal(played.length, 1, 'applying the rolled damage does not replay Animater');
+    assert.deepEqual(order, ['animater', 'tiles:damage-first', 'tiles:damage-second']);
+  } finally { api.play = original; canvas.grid = grid; await runner.stop(false); }
+});
+
 const animaterMain = new URL('../../animater/scripts/main.mjs', import.meta.url);
 test('Toolbelt confirmation opens damage and plays real Animater Caustic Blast after source removal', { skip: !existsSync(animaterMain) }, async () => {
   const { resolveAutomaticRecipe, normalizeCatalogState } = await import('../../animater/scripts/spell-catalog.mjs');

@@ -91,6 +91,11 @@ export const pf2eAdapter = {
     } else if (message.isRoll || (flags?.context?.type && flags.context.type !== 'spell-cast') || !flags?.origin?.rollOptions?.includes('origin:action:slug:cast-a-spell')) return null;
     return message;
   },
+  damageRoll(message) {
+    if (message.flags?.[game.system.id]?.context?.type !== 'damage-roll') return null;
+    const uuids = message.flags?.['pf2e-toolbelt']?.targetHelper?.targets;
+    return { item: message.item, token: message.token, targets: uuids?.length ? uuids.map(uuid => fromUuidSync(uuid)?.object).filter(Boolean) : null };
+  },
   listenDamage() {},
   handlesPlacement: wizardHandlesPlacement,
   placementPending: wizardPlacementPending,

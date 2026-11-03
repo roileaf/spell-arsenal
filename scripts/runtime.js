@@ -44,6 +44,7 @@ class SpellVisualRunner {
     this.received = new Set();
     this.animated = new Map();
     this.damageBatches = new Map();
+    this.rolledDamage = new Map();
     this.animationTasks = new WeakMap();
     this.confirmedAnimationRegions = new WeakSet();
     this.finished = new Set();
@@ -156,6 +157,7 @@ class SpellVisualRunner {
 
   handleMessage(message) {
     if (!this.enabled || !authorized()) return;
+    if (this.kind === 'damage') this.animateDamageRoll(message);
     message = this.adapter.messageEvent(message, this.kind);
     if (!message) return;
     const spell = message.item;
@@ -268,6 +270,8 @@ class SpellVisualRunner {
     if (this.animated.has(message.id)) return this.animated.get(message.id);
     const item = message.item;
     const key = item?.uuid ?? item?.name;
+    const rolled = this.rolledDamage.get(key);
+    if (rolled) { this.animated.set(message.id, rolled); return rolled; }
     let batch = this.damageBatches.get(key);
     if (!batch) {
       const caster = item?.actor ?? (item?.uuid ? globalThis.fromUuidSync?.(item.uuid)?.actor : null);
@@ -283,6 +287,24 @@ class SpellVisualRunner {
     this.animated.set(message.id, batch.task);
     if (this.animated.size > 500) this.animated.delete(this.animated.keys().next().value);
     return batch.task;
+  }
+
+  // Animater plays a damage recipe on the damage roll, and yields that roll to Spell Arsenal.
+  // Play it there, from the caster at the roller's targets; applied damage's tiles wait for it.
+  animateDamageRoll(message) {
+    if (!this.settings.ANIMATER) return;
+    const roll = this.adapter.damageRoll?.(message);
+    const item = roll?.item;
+    if (!(item?.type === 'spell' || item?.isOfType?.('spell')) || !spellNameMatches(this.settings.SPELL_NAME, item)) return;
+    const token = roll.token ?? message.token;
+    const scene = token?.parent ?? canvas.scene;
+    const targets = roll.targets ?? [...(message.author?.targets ?? [])].filter(target => target.document?.parent === scene);
+    const task = playAnimater({ type: 'damage', item, actor: item.actor ?? message.actor, tokenId: token?.id, sceneId: scene?.id }, { targets }).catch(error => this.report(error));
+    const key = item.uuid ?? item.name;
+    this.rolledDamage.delete(key);
+    this.rolledDamage.set(key, task);
+    if (this.rolledDamage.size > 100) this.rolledDamage.delete(this.rolledDamage.keys().next().value);
+    return task;
   }
 
   queueRegion(region) {

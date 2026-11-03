@@ -145,6 +145,7 @@ export const dnd5eAdapter = {
     return { id: message.id, item: dndMessageSpell(message), token: message.getAssociatedToken?.(), actor: message.getAssociatedActor?.(),
       flags: { dnd5e: { origin: { castRank: cast.spellLevel } } } };
   },
+  damageRoll: message => message.type === 'damage' ? { item: dndMessageSpell(message), token: message.getAssociatedToken?.(), targets: null } : null,
   listenDamage(listen, emit) {
     listen('updateActor', (actor, changes, options) => {
       const event = options.spellArsenalDamageEvent;
